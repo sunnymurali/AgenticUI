@@ -129,7 +129,7 @@ export default function AgentDetails() {
                 Chat
               </Button>
             </Link>
-            <Button variant="outline">
+            <Button variant="outline" onClick={() => setIsEditing(true)}>
               <Edit className="mr-2" size={16} />
               Edit
             </Button>
@@ -137,7 +137,115 @@ export default function AgentDetails() {
         </div>
 
         {/* Agent Info Card */}
-        <Card>
+        {isEditing ? (
+          <Card>
+            <CardHeader>
+              <CardTitle>Edit Agent</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+                <div>
+                  <Label htmlFor="name">Agent Name</Label>
+                  <Input
+                    id="name"
+                    {...form.register("name")}
+                    placeholder="Enter agent name"
+                  />
+                  {form.formState.errors.name && (
+                    <p className="text-red-500 text-sm mt-1">{form.formState.errors.name.message}</p>
+                  )}
+                </div>
+
+                <div>
+                  <Label htmlFor="model_name">Model</Label>
+                  <Select
+                    value={form.watch("model_name")}
+                    onValueChange={(value) => form.setValue("model_name", value)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select a model" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="gpt-4">GPT-4</SelectItem>
+                      <SelectItem value="gpt-3.5-turbo">GPT-3.5 Turbo</SelectItem>
+                      <SelectItem value="claude-3-sonnet">Claude 3 Sonnet</SelectItem>
+                      <SelectItem value="claude-3-haiku">Claude 3 Haiku</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  {form.formState.errors.model_name && (
+                    <p className="text-red-500 text-sm mt-1">{form.formState.errors.model_name.message}</p>
+                  )}
+                </div>
+
+                <div>
+                  <Label htmlFor="system_prompt">System Prompt</Label>
+                  <Textarea
+                    id="system_prompt"
+                    {...form.register("system_prompt")}
+                    placeholder="Enter system prompt"
+                    rows={6}
+                  />
+                  {form.formState.errors.system_prompt && (
+                    <p className="text-red-500 text-sm mt-1">{form.formState.errors.system_prompt.message}</p>
+                  )}
+                </div>
+
+                <div>
+                  <Label htmlFor="temperature">Temperature ({form.watch("temperature")})</Label>
+                  <Input
+                    id="temperature"
+                    type="number"
+                    min="0"
+                    max="2"
+                    step="0.1"
+                    {...form.register("temperature", { valueAsNumber: true })}
+                  />
+                  {form.formState.errors.temperature && (
+                    <p className="text-red-500 text-sm mt-1">{form.formState.errors.temperature.message}</p>
+                  )}
+                </div>
+
+                <div>
+                  <Label htmlFor="retriever_strategy">Retriever Strategy</Label>
+                  <Input
+                    id="retriever_strategy"
+                    {...form.register("retriever_strategy")}
+                    placeholder="Enter retriever strategy (optional)"
+                  />
+                </div>
+
+                <div className="flex space-x-3 pt-4">
+                  <Button 
+                    type="submit" 
+                    disabled={updateMutation.isPending}
+                    className="bg-primary text-white hover:bg-blue-700"
+                  >
+                    {updateMutation.isPending ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Saving...
+                      </>
+                    ) : (
+                      <>
+                        <Save className="mr-2" size={16} />
+                        Save Changes
+                      </>
+                    )}
+                  </Button>
+                  <Button 
+                    type="button" 
+                    variant="outline" 
+                    onClick={handleCancelEdit}
+                  >
+                    <X className="mr-2" size={16} />
+                    Cancel
+                  </Button>
+                </div>
+              </form>
+            </CardContent>
+          </Card>
+        ) : (
+          <Card>
           <CardHeader>
             <div className="flex items-center space-x-4">
               <div className="w-16 h-16 gradient-blue-teal rounded-lg flex items-center justify-center">
@@ -201,6 +309,7 @@ export default function AgentDetails() {
             )}
           </CardContent>
         </Card>
+        )}
 
         {/* Documents */}
         {documents.length > 0 && (

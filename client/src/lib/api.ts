@@ -109,10 +109,21 @@ export const api = {
   },
 
   async updateAgent(agentId: string, data: Partial<InsertAgent>): Promise<AgentWithStats> {
+    // Prepare request body in the exact format expected by the backend
+    const requestBody = {
+      name: data.name,
+      model_name: data.model_name,
+      system_prompt: data.system_prompt,
+      temperature: data.temperature,
+      retriever_strategy: data.retriever_strategy || ""
+    };
+
+
+
     const response = await fetch(`${PYTHON_API_BASE}/agent/${agentId}`, {
-      method: "PUT",
+      method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(data),
+      body: JSON.stringify(requestBody),
     });
     
     if (!response.ok) {
@@ -125,16 +136,16 @@ export const api = {
     return {
       id: 0,
       agent_id: result.agent_id || agentId,
-      name: result.name || data.name || "",
-      model_name: result.model_name || data.model_name || "",
-      system_prompt: result.system_prompt || data.system_prompt || "",
-      temperature: result.temperature ?? data.temperature ?? 0.7,
-      retriever_strategy: result.retriever_strategy || data.retriever_strategy || "",
+      name: result.name || requestBody.name || "",
+      model_name: result.model_name || requestBody.model_name || "",
+      system_prompt: result.system_prompt || requestBody.system_prompt || "",
+      temperature: result.temperature ?? requestBody.temperature ?? 0.7,
+      retriever_strategy: result.retriever_strategy || requestBody.retriever_strategy || "",
       interactions: [],
       created_at: new Date(),
       updated_at: new Date(),
-      document_count: 0,
-      documents: []
+      document_count: result.document_count || 0,
+      documents: result.documents || []
     };
   },
 
