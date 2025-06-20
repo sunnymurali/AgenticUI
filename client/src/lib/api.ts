@@ -205,14 +205,13 @@ export const api = {
     return response.json();
   },
 
-  // Delete documents for an agent
-  async deleteAgentDocuments(agentId: string): Promise<{ message: string }> {
-    const response = await fetch(`${PYTHON_API_BASE}/delete/${agentId}/delete_documents`, {
+  async deleteAgentDocument(agentId: string, fileName: string): Promise<{ message: string }> {
+    const response = await fetch(`${PYTHON_API_BASE}/agent/${agentId}/delete-document?file_name=${encodeURIComponent(fileName)}`, {
       method: "DELETE",
     });
     
     if (!response.ok) {
-      throw new Error(`Failed to delete documents: ${response.statusText}`);
+      throw new Error(`Failed to delete document: ${response.statusText}`);
     }
     
     return response.json();

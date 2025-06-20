@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { UploadDropzone } from "@/components/upload-dropzone";
 import { useAgents } from "@/hooks/use-agents";
-import { useAgentDocuments, useDeleteAgentDocuments, useSearchAgentDocuments } from "@/hooks/use-documents";
+import { useAgentDocuments, useDeleteAgentDocument, useSearchAgentDocuments } from "@/hooks/use-documents";
 import { Bot, FileText, Search, Trash2, Upload, Loader2 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -18,7 +18,7 @@ export default function Documents() {
   
   const { data: agents, isLoading: agentsLoading } = useAgents();
   const { data: documents, isLoading: documentsLoading } = useAgentDocuments(selectedAgentId);
-  const deleteDocumentsMutation = useDeleteAgentDocuments(selectedAgentId);
+  const deleteDocumentMutation = useDeleteAgentDocument(selectedAgentId);
   const searchDocumentsMutation = useSearchAgentDocuments(selectedAgentId);
 
   const selectedAgent = agents?.find(agent => agent.agent_id === selectedAgentId);
@@ -29,9 +29,9 @@ export default function Documents() {
     setSearchQuery("");
   };
 
-  const handleDeleteDocuments = () => {
-    if (selectedAgentId && confirm("Are you sure you want to delete all documents for this agent? This action cannot be undone.")) {
-      deleteDocumentsMutation.mutate();
+  const handleDeleteDocument = (fileName: string) => {
+    if (confirm(`Are you sure you want to delete "${fileName}"? This action cannot be undone.`)) {
+      deleteDocumentMutation.mutate(fileName);
     }
   };
 
@@ -142,29 +142,7 @@ export default function Documents() {
       {selectedAgent && (
         <Card>
           <CardHeader className="border-b border-gray-200">
-            <div className="flex justify-between items-center">
-              <CardTitle>Uploaded Documents</CardTitle>
-              {documentList.length > 0 && (
-                <Button
-                  variant="destructive"
-                  size="sm"
-                  onClick={handleDeleteDocuments}
-                  disabled={deleteDocumentsMutation.isPending}
-                >
-                  {deleteDocumentsMutation.isPending ? (
-                    <>
-                      <Loader2 size={16} className="mr-2 animate-spin" />
-                      Deleting...
-                    </>
-                  ) : (
-                    <>
-                      <Trash2 size={16} className="mr-2" />
-                      Delete All
-                    </>
-                  )}
-                </Button>
-              )}
-            </div>
+            <CardTitle>Uploaded Documents</CardTitle>
           </CardHeader>
           <CardContent className="p-6">
             {documentsLoading ? (
@@ -198,6 +176,19 @@ export default function Documents() {
                       </div>
                     </div>
                     <div className="flex items-center space-x-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleDeleteDocument(doc.file_name)}
+                        disabled={deleteDocumentMutation.isPending}
+                        className="text-red-600 hover:text-red-700"
+                      >
+                        {deleteDocumentMutation.isPending ? (
+                          <Loader2 size={16} className="animate-spin" />
+                        ) : (
+                          <Trash2 size={16} />
+                        )}
+                      </Button>
                       <Dialog open={searchModalOpen} onOpenChange={setSearchModalOpen}>
                         <DialogTrigger asChild>
                           <Button

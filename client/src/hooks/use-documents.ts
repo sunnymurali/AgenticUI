@@ -10,25 +10,25 @@ export function useAgentDocuments(agentId: string) {
   });
 }
 
-export function useDeleteAgentDocuments(agentId: string) {
+export function useDeleteAgentDocument(agentId: string) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
   return useMutation({
-    mutationFn: () => api.deleteAgentDocuments(agentId),
-    onSuccess: () => {
+    mutationFn: (fileName: string) => api.deleteAgentDocument(agentId, fileName),
+    onSuccess: (_, fileName) => {
       // Invalidate documents cache to refresh the list
       queryClient.invalidateQueries({ queryKey: ['/api/agent', agentId, 'documents'] });
       queryClient.invalidateQueries({ queryKey: ['/api/agents'] });
       toast({
         title: "Success",
-        description: "Documents deleted successfully",
+        description: `Document "${fileName}" deleted successfully`,
       });
     },
     onError: (error: Error) => {
       toast({
         title: "Error", 
-        description: error.message || "Failed to delete documents",
+        description: error.message || "Failed to delete document",
         variant: "destructive",
       });
     },
