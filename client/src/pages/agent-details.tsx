@@ -1,16 +1,73 @@
+import { useState } from "react";
+import React from "react";
 import { useParams, Link } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { useAgent } from "@/hooks/use-agents";
-import { Bot, MessageCircle, FileText, Edit, ArrowLeft, Thermometer } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useAgent, useUpdateAgent } from "@/hooks/use-agents";
+import { Bot, MessageCircle, FileText, Edit, ArrowLeft, Thermometer, Save, X, Loader2 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { insertAgentSchema } from "@shared/schema";
+import type { InsertAgent } from "@shared/schema";
 
 export default function AgentDetails() {
   const params = useParams();
   const agentId = params.id;
+  const [isEditing, setIsEditing] = useState(false);
   
   const { data: agentData, isLoading } = useAgent(agentId!);
+  const updateMutation = useUpdateAgent(agentId!);
+
+  const form = useForm<InsertAgent>({
+    resolver: zodResolver(insertAgentSchema),
+    defaultValues: {
+      name: "",
+      model_name: "",
+      system_prompt: "",
+      temperature: 0.7,
+      retriever_strategy: "",
+    },
+  });
+
+  // Update form when agent data loads
+  React.useEffect(() => {
+    if (agentData?.agent) {
+      form.reset({
+        name: agentData.agent.name,
+        model_name: agentData.agent.model_name,
+        system_prompt: agentData.agent.system_prompt,
+        temperature: agentData.agent.temperature,
+        retriever_strategy: agentData.agent.retriever_strategy || "",
+      });
+    }
+  }, [agentData, form]);
+
+  const onSubmit = (data: InsertAgent) => {
+    updateMutation.mutate(data, {
+      onSuccess: () => {
+        setIsEditing(false);
+      },
+    });
+  };
+
+  const handleCancelEdit = () => {
+    setIsEditing(false);
+    if (agentData?.agent) {
+      form.reset({
+        name: agentData.agent.name,
+        model_name: agentData.agent.model_name,
+        system_prompt: agentData.agent.system_prompt,
+        temperature: agentData.agent.temperature,
+        retriever_strategy: agentData.agent.retriever_strategy || "",
+      });
+    }
+  };
 
   if (isLoading) {
     return (

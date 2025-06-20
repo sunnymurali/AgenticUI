@@ -61,7 +61,8 @@ export const api = {
     }
     
     const result = await response.json();
-// Transform the nested response format to match frontend expectations
+    
+    // Transform the nested response format to match frontend expectations
     return result.map((item: any, index: number) => ({
       id: index + 1,
       agent_id: item.agent.agent_id,
@@ -109,7 +110,7 @@ export const api = {
 
   async updateAgent(agentId: string, data: Partial<InsertAgent>): Promise<AgentWithStats> {
     const response = await fetch(`${PYTHON_API_BASE}/agent/${agentId}`, {
-      method: "PATCH",
+      method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data),
     });
@@ -118,8 +119,23 @@ export const api = {
       throw new Error(`Failed to update agent: ${response.statusText}`);
     }
     
-    // Return updated agent (you might want to fetch the updated agent)
-    return this.getAgent(agentId).then(result => result.agent);
+    const result = await response.json();
+    
+    // Transform response to match expected format
+    return {
+      id: 0,
+      agent_id: result.agent_id || agentId,
+      name: result.name || data.name || "",
+      model_name: result.model_name || data.model_name || "",
+      system_prompt: result.system_prompt || data.system_prompt || "",
+      temperature: result.temperature ?? data.temperature ?? 0.7,
+      retriever_strategy: result.retriever_strategy || data.retriever_strategy || "",
+      interactions: [],
+      created_at: new Date(),
+      updated_at: new Date(),
+      document_count: 0,
+      documents: []
+    };
   },
 
   async deleteAgent(agentId: string): Promise<{ message: string }> {
@@ -129,16 +145,6 @@ export const api = {
     
     if (!response.ok) {
       throw new Error(`Failed to delete agent: ${response.statusText}`);
-    }
-    
-    return response.json();
-  },
-
-  async getAgentDocuments(agentId: string): Promise<Array<{file_name: string, count: number}>> {
-    const response = await fetch(`${PYTHON_API_BASE}/agent/${agentId}/docs`);
-    
-    if (!response.ok) {
-      throw new Error(`Failed to get agent documents: ${response.statusText}`);
     }
     
     return response.json();
@@ -183,6 +189,45 @@ export const api = {
     
     if (!response.ok) {
       throw new Error(`Failed to get stats: ${response.statusText}`);
+    }
+    
+    return response.json();
+  },
+
+  // Get documents for a specific agent
+  async getAgentDocuments(agentId: string): Promise<Array<{file_name: string, count: number}>> {
+    const response = await fetch(`${PYTHON_API_BASE}/agent/${agentId}/docs`);
+    
+    if (!response.ok) {
+      throw new Error(`Failed to get agent documents: ${response.statusText}`);
+    }
+    
+    return response.json();
+  },
+
+  // Delete documents for an agent
+  async deleteAgentDocuments(agentId: string): Promise<{ message: string }> {
+    const response = await fetch(`${PYTHON_API_BASE}/delete/${agentId}/delete_documents`, {
+      method: "DELETE",
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Failed to delete documents: ${response.statusText}`);
+    }
+    
+    return response.json();
+  },
+
+  // Search documents within an agent
+  async searchAgentDocuments(agentId: string, query: string, topK: number = 3): Promise<any[]> {
+    const response = await fetch(`${PYTHON_API_BASE}/agent/${agentId}/search-docs`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ query, top_k: topK }),
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Failed to search documents: ${response.statusText}`);
     }
     
     return response.json();
