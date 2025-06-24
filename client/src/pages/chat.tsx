@@ -6,8 +6,9 @@ import { ChatMessageComponent } from "@/components/chat-message";
 import { useAgents } from "@/hooks/use-agents";
 import { useChat } from "@/hooks/use-chat";
 import { useLocation } from "wouter";
-import { Bot, Send, Plus, Paperclip } from "lucide-react";
+import { Bot, Send, Plus, Paperclip, FileText, X } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
+import { api } from "@/lib/api";
 
 export default function Chat() {
   const [location] = useLocation();
@@ -17,6 +18,12 @@ export default function Chat() {
   
   const { data: agents, isLoading: agentsLoading } = useAgents();
   const chat = useChat(selectedAgentId);
+  const [showDocumentPicker, setShowDocumentPicker] = useState(false);
+  const [availableDocuments, setAvailableDocuments] = useState<string[]>([]);
+  const [selectedDocument, setSelectedDocument] = useState<string | null>(null);
+  const [loadingDocuments, setLoadingDocuments] = useState(false);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const [fileNames, setFileNames] = useState<string[]>([]);
 
   // Parse agent from URL
   useEffect(() => {
@@ -35,14 +42,47 @@ export default function Chat() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [chat.messages]);
 
+  const handleMessageChange = async (value: string) => {
+    setCurrentMessage(value);
+    
+    // Check if user typed "/" to trigger document picker
+    if (value === "/" && selectedAgentId) {
+      setLoadingDocuments(true);
+      try {
+        const documents = await api.getDocumentsByFileName(selectedAgentId);
+        setAvailableDocuments(documents);
+        setShowDocumentPicker(true);
+      } catch (error) {
+        console.error("Failed to load documents:", error);
+      } finally {
+        setLoadingDocuments(false);
+      }
+    } else if (showDocumentPicker && !value.startsWith("/")) {
+      setShowDocumentPicker(false);
+      setSelectedDocument(null);
+    }
+  };
+  
+  const handleDocumentSelect = (docName: string) => {
+    setSelectedDocument(docName);
+    setCurrentMessage("");
+    setShowDocumentPicker(false);
+    textareaRef.current?.focus();
+  };
+  
+  const handleRemoveDocument = () => {
+    setSelectedDocument(null);
+  };
   const selectedAgent = agents?.find(agent => agent.agent_id === selectedAgentId);
 
   const handleSendMessage = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!currentMessage.trim() || !selectedAgentId || chat.isLoading) return;
-    
-    chat.sendMessage(currentMessage.trim());
-    setCurrentMessage("");
+  e.preventDefault();
+  if (!currentMessage.trim() || !selectedAgentId || chat.isLoading) return;
+  
+  chat.sendMessage(currentMessage.trim(), selectedDocument || undefined);
+  setCurrentMessage("");
+  setSelectedDocument(null);
+  setShowDocumentPicker(false);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -197,42 +237,91 @@ export default function Chat() {
           </div>
 
           {/* Chat Input */}
+          {/* Chat Input */}
           {selectedAgent && (
             <div className="border-t border-gray-200 p-4">
-              <form onSubmit={handleSendMessage} className="flex items-end space-x-3">
-                <div className="flex-1">
-                  <div className="relative">
-                    <Textarea
-                      placeholder="Type your message here..."
-                      value={currentMessage}
-                      onChange={(e) => setCurrentMessage(e.target.value)}
-                      onKeyDown={handleKeyDown}
-                      rows={1}
-                      className="resize-none pr-10"
-                      disabled={chat.isLoading}
-                    />
-                    <div className="absolute right-2 top-2">
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        className="p-1.5 text-slate-400 hover:text-slate-600"
-                      >
-                        <Paperclip size={16} />
-                      </Button>
+              <div className="space-y-2">
+                {/* Selected Document Display */}
+                {selectedDocument && (
+                  <div className="flex items-center gap-2 p-2 bg-blue-50 rounded-lg border border-blue-200">
+                    <FileText size={16} className="text-blue-600" />
+                    <span className="text-sm text-blue-800 font-medium">{selectedDocument}</span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={handleRemoveDocument}
+                      className="ml-auto h-6 w-6 p-0 text-blue-600 hover:text-blue-800"
+                    >
+                      <X size={14} />
+                    </Button>
+                  </div>
+                )}
+                {/* Document Picker */}
+                {showDocumentPicker && (
+                  <div className="border border-gray-200 rounded-lg bg-white shadow-sm max-h-48 overflow-y-auto">
+                    <div className="p-2 border-b border-gray-100 bg-gray-50">
+                      <span className="text-sm font-medium text-gray-700">Select a document:</span>
+                    </div>
+                    {loadingDocuments ? (
+                      <div className="p-4 text-center">
+                        <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto" />
+                        <span className="text-sm text-gray-500 mt-2">Loading documents...</span>
+                      </div>
+                    ) : availableDocuments.length > 0 ? (
+                      <div className="py-1">
+                        {availableDocuments.map((doc, index) => (
+                          <button
+                            key={index}
+                            onClick={() => handleDocumentSelect(doc)}
+                            className="w-full text-left px-3 py-2 hover:bg-gray-50 flex items-center gap-2 text-sm"
+                          >
+                            <FileText size={14} className="text-gray-400" />
+                            <span>{doc}</span>
+                          </button>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="p-4 text-center text-sm text-gray-500">
+                        No documents available
+                      </div>
+                    )}
+                  </div>
+                )}
+                <form onSubmit={handleSendMessage} className="flex items-end space-x-3">
+                  <div className="flex-1">
+                    <div className="relative">
+                      <Textarea
+                        ref={textareaRef}
+                        value={currentMessage}
+                        onChange={(e) => handleMessageChange(e.target.value)}
+                        onKeyDown={handleKeyDown}
+                        placeholder={selectedDocument ? "Ask about the selected document..." : "Type your message... (Type '/' to select a document)"}
+                        rows={1}
+                        className="resize-none pr-10"
+                        disabled={chat.isLoading}
+                      />
+                      {currentMessage === "/" && (
+                        <div className="absolute right-2 top-2 text-blue-500">
+                          <FileText size={16} />
+                        </div>
+                      )}
                     </div>
                   </div>
-                </div>
-                <Button
-                  type="submit"
-                  className="bg-primary text-white hover:bg-blue-700"
-                  disabled={!currentMessage.trim() || chat.isLoading}
-                >
-                  <Send size={16} />
-                </Button>
-              </form>
+                  <Button
+                    type="submit"
+                    className="bg-primary text-white hover:bg-blue-700"
+                    disabled={!currentMessage.trim() || chat.isLoading}
+                  >
+                    {chat.isLoading ? (
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    ) : (
+                      <Send size={16} />
+                    )}
+                  </Button>
+                </form>
+              </div>
               <p className="text-xs text-slate-500 mt-2">
-                Press Enter to send, Shift+Enter for new line
+                Press Enter to send, Shift+Enter for new line • Type "/" to select a document
               </p>
             </div>
           )}

@@ -32,7 +32,7 @@ export function useChat(agentId: string) {
     },
   });
 
-  const sendMessage = (content: string) => {
+  const sendMessage = (content: string, fileName?: string) => {
     // Add user message immediately
     const userMessage: ChatMessage = {
       role: "user",
@@ -40,11 +40,11 @@ export function useChat(agentId: string) {
       timestamp: new Date().toISOString(),
     };
     setMessages(prev => [...prev, userMessage]);
-
-    // Send to API
+    // Send to API with optional file_name
     sendMessageMutation.mutate({
       session_id: sessionId,
       message: content,
+      file_name: fileName,
     });
   };
 

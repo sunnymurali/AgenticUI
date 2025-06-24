@@ -242,4 +242,17 @@ export const api = {
     
     return response.json();
   },
+
+  async getDocumentsByFileName(agentId: string): Promise<string[]> {
+    const response = await fetch(`${PYTHON_API_BASE}/agent/${agentId}/docs`);
+    
+    if (!response.ok) {
+      throw new Error(`Failed to get documents by filename: ${response.statusText}`);
+    }
+    
+    const docs: Array<{ file_name: string; content_preview: string; upload_date?: string }> = await response.json();
+    // Extract unique filenames from the response
+    const filenames = [...new Set(docs.map(doc => doc.file_name))];
+    return filenames;
+  },
 };
