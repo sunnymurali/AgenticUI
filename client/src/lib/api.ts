@@ -178,6 +178,12 @@ export const api = {
 
   // Document operations
   async uploadDocument(agentId: string, file: File): Promise<UploadResponse> {
+    // Check if backend is available
+    const isBackendAvailable = await checkBackendHealth();
+    if (!isBackendAvailable) {
+      throw new Error("Python backend is not available. Please ensure the backend is running on port 8000.");
+    }
+
     const formData = new FormData();
     formData.append("file", file);
     
@@ -188,7 +194,7 @@ export const api = {
     
     if (!response.ok) {
       const text = (await response.text()) || response.statusText;
-      throw new Error(`${response.status}: ${text}`);
+      throw new Error(`Upload failed (${response.status}): ${text}`);
     }
     
     return response.json();

@@ -54,8 +54,21 @@ export function UploadDropzone({ agentId }: UploadDropzoneProps) {
   });
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
+    const supportedTypes = [
+      "application/pdf",
+      "text/plain",
+      "application/msword",
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "image/png",
+      "image/jpeg",
+      "image/jpg"
+    ];
+    
     const newFiles = acceptedFiles
-      .filter(file => file.type === "application/pdf")
+      .filter(file => supportedTypes.includes(file.type) || 
+        file.name.endsWith('.txt') || file.name.endsWith('.pdf') || 
+        file.name.endsWith('.doc') || file.name.endsWith('.docx') ||
+        file.name.endsWith('.png') || file.name.endsWith('.jpg') || file.name.endsWith('.jpeg'))
       .map(file => ({
         file,
         progress: 0,
@@ -65,7 +78,7 @@ export function UploadDropzone({ agentId }: UploadDropzoneProps) {
     if (newFiles.length !== acceptedFiles.length) {
       toast({
         title: "Warning",
-        description: "Only PDF files are supported",
+        description: "Only PDF, DOC, DOCX, TXT, PNG, and JPG files are supported",
         variant: "destructive",
       });
     }
@@ -86,7 +99,12 @@ export function UploadDropzone({ agentId }: UploadDropzoneProps) {
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
     accept: {
-      'application/pdf': ['.pdf']
+      'application/pdf': ['.pdf'],
+      'text/plain': ['.txt'],
+      'application/msword': ['.doc'],
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx'],
+      'image/png': ['.png'],
+      'image/jpeg': ['.jpg', '.jpeg']
     },
     multiple: true,
   });
@@ -107,13 +125,14 @@ export function UploadDropzone({ agentId }: UploadDropzoneProps) {
         <div className="mx-auto w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mb-4">
           <FileText className="text-2xl text-slate-400" />
         </div>
-        <h4 className="text-lg font-medium text-slate-800 mb-2">Upload PDF Documents</h4>
+        <h4 className="text-lg font-medium text-slate-800 mb-2">Upload Documents</h4>
         <p className="text-slate-600 mb-4">
           {isDragActive 
-            ? "Drop your PDF files here..." 
-            : "Drag and drop your PDF files here, or click to browse"
+            ? "Drop your files here..." 
+            : "Drag and drop your files here, or click to browse"
           }
         </p>
+        <p className="text-xs text-slate-500 mb-4">Supported formats: PDF, DOC, DOCX, TXT, PNG, JPG</p>
         <Button type="button" className="bg-primary text-white hover:bg-blue-700">
           <Upload className="mr-2" size={16} />
           Choose Files
