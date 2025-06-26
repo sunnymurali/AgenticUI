@@ -218,38 +218,66 @@ def chat_with_tool(agent_id: str, req: ChatRequest):
         filter=f"agent_id eq '{agent_id}' and type eq 'tool'"
     )
 
-    functions = []
-    name_to_func = {}
+    tools = []
     for t in tool_results:
-        func_def = {
-            "name": t["name"],
-            "description": t["tool_description"],
-            "parameters": t["tool_parameters"]
-        }
-
-        def call_api_wrapper(api_token=t["api_token"], url=t["endpoint_url"]):
-            def inner_func(user_input: str):  # accept single positional argument
+        def create_tool_function(tool_config):
+            """Create a closure to capture the tool configuration"""
+            api_token = tool_config["api_token"]
+            url = tool_config["endpoint_url"]
+            tool_name = tool_config["name"]
+            
+            def tool_function(city: str) -> str:
+                """Get weather information for a specific city"""
+                logger.info(f"Tool {tool_name} called with city: {city}")
                 headers = {"Authorization": f"Bearer {api_token}"}
                 try:
-                    # For example, send the user_input as JSON payload
-                    # response = requests.post(url, json={"input": user_input}, headers=headers)
-                    
-                    # Demo hardcoded response:
-                    response = "Huzzah!! Pirates of the Caribbean"
-                    
-                    # If you use requests uncomment below
+                    # For actual API calls, uncomment this:
+                    # response = requests.post(url, json={"city": city}, headers=headers)
                     # return response.json()
                     
+                    # Demo hardcoded response:
+                    mock_weather = {
+                        "new york": "Weather in New York: Sunny, 25°C",
+                        "san francisco": "Weather in San Francisco: Foggy, 18°C", 
+                        "london": "Weather in London: Rainy, 15°C",
+                        "paris": "Weather in Paris: Partly Cloudy, 22°C",
+                        "tokyo": "Weather in Tokyo: Mostly Sunny, 27°C",
+                    }
+
+                    city_lower = city.strip().lower()
+                    response = mock_weather.get(city_lower, f"No weather data available for '{city}'")
+                    logger.info(f"Tool {tool_name} returning: {response}")
                     return response
                 except Exception as e:
-                    return {"error": str(e)}
-            return inner_func
+                    error_msg = f"Error getting weather for {city}: {str(e)}"
+                    logger.error(error_msg)
+                    return error_msg
+            
+            return tool_function
 
-        functions.append(func_def)
-        name_to_func[t["name"]] = call_api_wrapper()
+        # Create the tool function with proper closure
+        tool_func = create_tool_function(t)
+        
+        # Create Tool object with explicit schema
+        from langchain.tools import StructuredTool
+        from pydantic import BaseModel, Field
+        
+        # Define the input schema for the tool
+        class WeatherInput(BaseModel):
+            city: str = Field(description="The name of the city to get weather information for")
+        
+        tool = StructuredTool(
+            name=t["name"],
+            description=f"{t['tool_description']} - Use this tool when users ask about weather in any city.",
+            func=tool_func,
+            args_schema=WeatherInput
+        )
+        
+        tools.append(tool)
+        logger.info(f"Created tool: {t['name']} with description: {t['tool_description']}")
 
-    # Initialize OpenAI LLM with tools
-    logger.info(f"Initializing OpenAI LLM with tools for agent {agent_id}")
+    # Initialize OpenAI LLM
+    logger.info(f"Initializing OpenAI LLM with {len(tools)} tools for agent {agent_id}")
     llm = AzureChatOpenAI(
         api_key=AZURE_OPENAI_KEY,
         azure_endpoint=AZURE_ENDPOINT,
@@ -258,29 +286,52 @@ def chat_with_tool(agent_id: str, req: ChatRequest):
         temperature=0.2
     )
 
-    from langchain.agents import OpenAIFunctionsAgent, AgentExecutor
-    from langchain.tools import Tool
-    from langchain.agents import create_openai_functions_agent
+    from langchain.agents import create_openai_functions_agent, AgentExecutor
     from langchain.prompts import ChatPromptTemplate, MessagesPlaceholder
 
     logger.info(f"Creating prompt for agent {agent_id}")
     prompt = ChatPromptTemplate.from_messages([
-    ("system", "You are a helpful assistant that uses the provided tools to answer questions."),
-    ("user", "{input}"),
-                    MessagesPlaceholder(variable_name="agent_scratchpad")  # required!
-    ])
+        ("system", """You are a helpful assistant with access to tools. 
+        
+When a user asks about weather in any city, you MUST use the available weather tool to get the information.
+Do not refuse to provide weather information - use the tool provided to you.
 
-    tools = [Tool.from_function(f, name=n, description="Tool Call") for n, f in name_to_func.items()]
+Available tools: {tool_names}
+
+Always use the appropriate tool when the user's question matches what the tool can do."""),
+        ("user", "{input}"),
+        MessagesPlaceholder(variable_name="agent_scratchpad")
+    ])
     
     logger.info(f"Creating agent and executor for agent {agent_id}")
     agent = create_openai_functions_agent(llm, tools, prompt)
 
-    agent_executor = AgentExecutor(agent=agent, tools=tools, verbose=True)
+    # Create agent executor with explicit tool binding
+    agent_executor = AgentExecutor(
+        agent=agent, 
+        tools=tools, 
+        verbose=True,
+        handle_parsing_errors=True,
+        max_iterations=3,
+        early_stopping_method="generate"
+    )
 
-    logger.info(f"Executing agent {agent_id} with input {req.message}")
-    result = agent_executor.invoke({"input": req.message})
-    logger.info(f"Returning response for agent {agent_id}: {result['output']}")
-    return {"response": result["output"]}
+    # Add tool names to the prompt context
+    tool_names = [tool.name for tool in tools]
+    
+    logger.info(f"Executing agent {agent_id} with input: {req.message}")
+    logger.info(f"Available tools: {tool_names}")
+    
+    try:
+        result = agent_executor.invoke({
+            "input": req.message,
+            "tool_names": ", ".join(tool_names)
+        })
+        logger.info(f"Agent execution result: {result}")
+        return {"response": result["output"]}
+    except Exception as e:
+        logger.error(f"Error executing agent {agent_id}: {str(e)}")
+        return {"response": f"Sorry, I encountered an error: {str(e)}"}
 
 @app.patch("/agent/{agent_id}")
 def update_agent(agent_id: str, req: AgentUpdateRequest):
