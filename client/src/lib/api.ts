@@ -39,6 +39,7 @@ export const api = {
       system_prompt: data.system_prompt,
       temperature: data.temperature,
       retriever_strategy: data.retriever_strategy,
+      use_tools: data.use_tools || false,
       interactions: [],
       created_at: new Date(),
       updated_at: new Date(),
@@ -71,6 +72,7 @@ export const api = {
       system_prompt: item.agent.system_prompt,
       temperature: item.agent.temperature,
       retriever_strategy: item.agent.retriever_strategy,
+      use_tools: item.agent.tool_id ? true : false,
       interactions: [],
       created_at: new Date(),
       updated_at: new Date(),
@@ -96,12 +98,20 @@ export const api = {
         model_name: result.agent.model_name,
         system_prompt: result.agent.system_prompt,
         temperature: result.agent.temperature,
+        use_tools: result.agent.tool_id ? true : false,
         retriever_strategy: result.agent.retriever_strategy,
         interactions: result.agent.interactions || [],
         created_at: new Date(),
         updated_at: new Date(),
         document_count: result.documents.length,
-        documents: result.documents
+        documents: result.documents,
+        // Tool-specific fields (when tool_id is present)
+        tool_id: result.agent.tool_id || undefined,
+        tool_name: result.agent.tool_name || undefined,
+        tool_description: result.agent.tool_description || undefined,
+        endpoint_url: result.agent.endpoint_url || undefined,
+        api_token: result.agent.api_token || undefined,
+        tool_parameters: result.agent.tool_parameters || undefined,
       },
       documents: result.documents,
       document_count: result.documents.length
@@ -115,7 +125,8 @@ export const api = {
       model_name: data.model_name,
       system_prompt: data.system_prompt,
       temperature: data.temperature,
-      retriever_strategy: data.retriever_strategy || ""
+      retriever_strategy: data.retriever_strategy || "",
+      use_tools: data.use_tools || false
     };
 
 
@@ -141,6 +152,7 @@ export const api = {
       system_prompt: result.system_prompt || requestBody.system_prompt || "",
       temperature: result.temperature ?? requestBody.temperature ?? 0.7,
       retriever_strategy: result.retriever_strategy || requestBody.retriever_strategy || "",
+      use_tools: result.use_tools ?? false,
       interactions: [],
       created_at: new Date(),
       updated_at: new Date(),
@@ -161,16 +173,55 @@ export const api = {
     return response.json();
   },
 
-  // Chat operations
+  // Modified sendMessage to support conditional endpoints
   async sendMessage(agentId: string, data: ChatRequest): Promise<ChatResponse> {
-    const response = await fetch(`${PYTHON_API_BASE}/chat/${agentId}`, {
+    const isBackendAvailable = await checkBackendHealth();
+    if (!isBackendAvailable) {
+      throw new Error("Python backend is not available. Please check if the backend is running on port 8000.");
+    }
+    // Step 1: Get agent details to check if it has tools
+    const agentResponse = await fetch(`${PYTHON_API_BASE}/agent/${agentId}`);
+    if (!agentResponse.ok) {
+      throw new Error(`Failed to get agent details: ${agentResponse.statusText}`);
+    }
+    
+    const agentData = await agentResponse.json();
+    const hasTools = agentData.agent.tool_id ? true : false;
+
+    // Step 2: Route to appropriate chat endpoint based on tool presence
+    const endpoint = hasTools ? `/chat-with-tool/${agentId}` : `/chat/${agentId}`;
+    const response = await fetch(`${PYTHON_API_BASE}${endpoint}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data),
     });
     
     if (!response.ok) {
-      throw new Error(`Failed to send message: ${response.statusText}`);
+      const text = (await response.text()) || response.statusText;
+      throw new Error(`${response.status}: ${text}`);
+    }
+    
+    return response.json();
+  },
+
+
+  // NEW: Tool creation function
+  // NEW: Tool creation function
+  // NEW: Tool creation function
+  async createTool(agentId: string, tool: any): Promise<any> {
+    const isBackendAvailable = await checkBackendHealth();
+    if (!isBackendAvailable) {
+      throw new Error("Python backend is not available. Please check if the backend is running on port 8000.");
+    }
+    const response = await fetch(`${PYTHON_API_BASE}/agent/${agentId}/tools`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(tool),
+    });
+    
+    if (!response.ok) {
+      const text = (await response.text()) || response.statusText;
+      throw new Error(`${response.status}: ${text}`);
     }
     
     return response.json();
@@ -258,7 +309,9 @@ export const api = {
     
     const docs: Array<{ file_name: string; content_preview: string; upload_date?: string }> = await response.json();
     // Extract unique filenames from the response
-    const filenames = [...new Set(docs.map(doc => doc.file_name))];
+    const fileNameSet = new Set<string>();
+    docs.forEach(doc => fileNameSet.add(doc.file_name));
+    const filenames = Array.from(fileNameSet);
     return filenames;
   },
 };

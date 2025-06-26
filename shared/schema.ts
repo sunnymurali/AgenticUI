@@ -1,4 +1,4 @@
-import { pgTable, text, serial, real, json, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, real, json, timestamp, boolean } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -10,6 +10,7 @@ export const agents = pgTable("agents", {
   system_prompt: text("system_prompt").notNull(),
   temperature: real("temperature").notNull(),
   retriever_strategy: text("retriever_strategy"),
+  use_tools: boolean("use_tools").default(false),
   interactions: json("interactions").$type<AgentInteraction[]>().default([]),
   created_at: timestamp("created_at").defaultNow(),
   updated_at: timestamp("updated_at").defaultNow(),
@@ -49,11 +50,13 @@ export const insertAgentSchema = createInsertSchema(agents).omit({
   id: true,
   agent_id: true,
   interactions: true,
+  use_tools: true,
   created_at: true,
   updated_at: true,
 }).extend({
-  temperature: z.number().min(0).max(1),
-  retriever_strategy: z.string().optional(),
+  temperature: z.number().min(0).max(2),
+  retriever_strategy: z.string().default("none"),
+  use_tools: z.boolean().optional(),
 });
 
 export const chatRequestSchema = z.object({
@@ -68,9 +71,18 @@ export const searchDocsSchema = z.object({
   top_k: z.number().min(1).max(20).default(3),
 });
 
+export const toolDefinitionSchema = z.object({
+  name: z.string().min(1, "Tool name is required"),
+  description: z.string().min(1, "Tool description is required"),
+  endpoint_url: z.string().url("Must be a valid URL"),
+  api_token: z.string().min(1, "API token is required"),
+  parameters: z.record(z.any()).optional(),
+});
+
 export type InsertAgent = z.infer<typeof insertAgentSchema>;
 export type Agent = typeof agents.$inferSelect;
 export type Session = typeof sessions.$inferSelect;
 export type Document = typeof documents.$inferSelect;
 export type ChatRequest = z.infer<typeof chatRequestSchema>;
 export type SearchDocsRequest = z.infer<typeof searchDocsSchema>;
+export type ToolDefinition = z.infer<typeof toolDefinitionSchema>;

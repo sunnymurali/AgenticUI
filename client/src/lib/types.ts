@@ -1,3 +1,4 @@
+// ADDED: Tool-related fields to AgentWithStats
 export interface AgentWithStats {
   id: number;
   agent_id: string;
@@ -11,6 +12,24 @@ export interface AgentWithStats {
   updated_at: Date;
   document_count: number;
   documents: string[];
+  use_tools?: boolean;        // NEW
+  tools?: ToolDefinition[];   // NEW
+  // Tool-specific fields (present when tool_id is not null)
+  tool_id?: string;
+  tool_name?: string;
+  tool_description?: string;
+  endpoint_url?: string;
+  api_token?: string;
+  tool_parameters?: string;
+}
+
+// ADDED: New ToolDefinition interface
+export interface ToolDefinition {
+  name: string;
+  description: string;
+  endpoint_url: string;
+  api_token: string;
+  parameters?: Record<string, any>;
 }
 
 export interface AgentInteraction {

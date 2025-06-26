@@ -103,8 +103,8 @@ export function UploadDropzone({ agentId }: UploadDropzoneProps) {
       'text/plain': ['.txt'],
       'application/msword': ['.doc'],
       'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx'],
-      'image/png': ['.png'],
-      'image/jpeg': ['.jpg', '.jpeg']
+      'image/png': ['.png'],        // NEW
+      'image/jpeg': ['.jpg', '.jpeg'] // NEW
     },
     multiple: true,
   });

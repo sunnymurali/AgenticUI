@@ -6,7 +6,8 @@ import { ChatMessageComponent } from "@/components/chat-message";
 import { useAgents } from "@/hooks/use-agents";
 import { useChat } from "@/hooks/use-chat";
 import { useLocation } from "wouter";
-import { Bot, Send, Plus, Paperclip, FileText, X } from "lucide-react";
+// ADDED: Wrench icon import
+import { Bot, Send, Plus, Paperclip, FileText, X, Wrench } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { api } from "@/lib/api";
 
@@ -17,7 +18,6 @@ export default function Chat() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   
   const { data: agents, isLoading: agentsLoading } = useAgents();
-  const chat = useChat(selectedAgentId);
   const [showDocumentPicker, setShowDocumentPicker] = useState(false);
   const [availableDocuments, setAvailableDocuments] = useState<string[]>([]);
   const [selectedDocument, setSelectedDocument] = useState<string | null>(null);
@@ -25,6 +25,10 @@ export default function Chat() {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [fileNames, setFileNames] = useState<string[]>([]);
 
+  // Added tool status detection
+  const selectedAgent = agents?.find(agent => agent.agent_id === selectedAgentId);
+  const useTools = selectedAgent?.use_tools || false;
+  const chat = useChat(selectedAgentId);
   // Parse agent from URL
   useEffect(() => {
     const params = new URLSearchParams(location.split('?')[1] || '');
@@ -73,7 +77,6 @@ export default function Chat() {
   const handleRemoveDocument = () => {
     setSelectedDocument(null);
   };
-  const selectedAgent = agents?.find(agent => agent.agent_id === selectedAgentId);
 
   const handleSendMessage = (e: React.FormEvent) => {
   e.preventDefault();
@@ -135,6 +138,12 @@ export default function Chat() {
                         <p className="font-medium text-slate-800 truncate">{agent.name}</p>
                         <p className="text-xs text-slate-500">{agent.model_name}</p>
                       </div>
+                      {agent.use_tools && (
+                        <div className="flex items-center gap-1 mt-1">
+                          <Wrench className="w-3 h-3 text-amber-600" />
+                          <span className="text-xs text-amber-600">Tools</span>
+                        </div>
+                      )}  
                     </div>
                   </div>
                 ))
@@ -164,6 +173,12 @@ export default function Chat() {
                 <div className="w-10 h-10 gradient-blue-teal rounded-lg flex items-center justify-center">
                   <Bot className="text-white" />
                 </div>
+                {selectedAgent?.use_tools && (
+                  <div className="flex items-center gap-1 mt-1">
+                    <Wrench className="w-3 h-3 text-amber-600" />
+                    <span className="text-xs text-amber-600 font-medium">Tools Enabled</span>
+                  </div>
+                )}  
                 <div>
                   <h3 className="font-semibold text-slate-800">
                     {selectedAgent ? selectedAgent.name : "Select an agent to start chatting"}

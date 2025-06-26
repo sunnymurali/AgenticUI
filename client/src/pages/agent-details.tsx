@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useAgent, useUpdateAgent } from "@/hooks/use-agents";
-import { Bot, MessageCircle, FileText, Edit, ArrowLeft, Thermometer, Save, X, Loader2 } from "lucide-react";
+import { Bot, MessageCircle, FileText, Edit, ArrowLeft, Thermometer, Save, X, Loader2, Wrench, Globe, Key, Code } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -310,7 +310,81 @@ export default function AgentDetails() {
           </CardContent>
         </Card>
         )}
+        {/* Tool Information - Show when tool_id is present */}
+        {agent.tool_id && (
+          <Card>
+            <CardHeader>
+              <div className="flex items-center space-x-2">
+                <Wrench className="text-amber-600" size={20} />
+                <CardTitle>Tool Configuration</CardTitle>
+                <Badge variant="default" className="bg-amber-100 text-amber-800">Tool Enabled</Badge>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="bg-slate-50 p-4 rounded-lg">
+                  <div className="flex items-center space-x-2 mb-2">
+                    <Wrench size={16} className="text-slate-600" />
+                    <span className="font-medium text-slate-800">Tool ID</span>
+                  </div>
+                  <p className="text-sm font-mono text-slate-700 bg-white p-2 rounded border">
+                    {agent.tool_id}
+                  </p>
+                </div>
 
+                <div className="bg-slate-50 p-4 rounded-lg">
+                  <div className="flex items-center space-x-2 mb-2">
+                    <Code size={16} className="text-slate-600" />
+                    <span className="font-medium text-slate-800">Tool Name</span>
+                  </div>
+                  <p className="text-sm text-slate-700">
+                    {agent.tool_name || 'N/A'}
+                  </p>
+                </div>
+
+                <div className="bg-slate-50 p-4 rounded-lg">
+                  <div className="flex items-center space-x-2 mb-2">
+                    <Globe size={16} className="text-slate-600" />
+                    <span className="font-medium text-slate-800">Endpoint URL</span>
+                  </div>
+                  <p className="text-sm font-mono text-slate-700 bg-white p-2 rounded border break-all">
+                    {agent.endpoint_url || 'N/A'}
+                  </p>
+                </div>
+
+                <div className="bg-slate-50 p-4 rounded-lg">
+                  <div className="flex items-center space-x-2 mb-2">
+                    <Key size={16} className="text-slate-600" />
+                    <span className="font-medium text-slate-800">API Token</span>
+                  </div>
+                  <p className="text-sm font-mono text-slate-700 bg-white p-2 rounded border">
+                    {agent.api_token ? '••••••••••••••••' : 'N/A'}
+                  </p>
+                </div>
+              </div>
+
+              {agent.tool_description && (
+                <div>
+                  <h3 className="font-medium text-slate-800 mb-2">Tool Description</h3>
+                  <div className="bg-slate-50 p-4 rounded-lg">
+                    <p className="text-slate-700">{agent.tool_description}</p>
+                  </div>
+                </div>
+              )}
+
+              {agent.tool_parameters && (
+                <div>
+                  <h3 className="font-medium text-slate-800 mb-2">Tool Parameters</h3>
+                  <div className="bg-slate-50 p-4 rounded-lg">
+                    <pre className="text-sm text-slate-700 bg-white p-3 rounded border overflow-x-auto">
+                      {JSON.stringify(JSON.parse(agent.tool_parameters), null, 2)}
+                    </pre>
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
         {/* Documents */}
         {documents.length > 0 && (
           <Card>
