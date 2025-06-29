@@ -12,8 +12,8 @@ export interface AgentWithStats {
   updated_at: Date;
   document_count: number;
   documents: string[];
-  use_tools?: boolean;        // NEW
-  tools?: ToolDefinition[];   // NEW
+  use_tools?: boolean;
+  tools?: any[]; // Array of tools from backend  // NEW
   // Tool-specific fields (present when tool_id is not null)
   tool_id?: string;
   tool_name?: string;

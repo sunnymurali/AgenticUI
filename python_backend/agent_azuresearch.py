@@ -1,9 +1,9 @@
 # agent_api.py
 
 from fastapi import FastAPI, HTTPException, UploadFile, File, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, create_model
 from uuid import uuid4
-from typing import List, Optional
+from typing import List, Optional,Literal, Callable
 from datetime import datetime
 import os
 from pydantic import BaseModel
@@ -22,6 +22,10 @@ from langchain.schema.messages import HumanMessage
 from langchain_core.messages import HumanMessage as VisionHumanMessage
 import base64
 import time
+import requests
+from langchain.tools import StructuredTool
+from langchain.agents import create_openai_functions_agent, AgentExecutor
+from langchain.prompts import ChatPromptTemplate, MessagesPlaceholder
 from dotenv import load_dotenv
 load_dotenv() 
 # --- Logging ---
@@ -91,13 +95,118 @@ class SearchDocsRequest(BaseModel):
     top_k: int = 3
 
 class ToolDefinition(BaseModel):
-    tool_name: str
-    tool_description: str
-    endpoint_url: str
-    api_token: str
-    parameters: Dict[str, Any]  # This is the OpenAI-style parameter schema
+    """Updated tool definition model supporting both API calls and Python execution"""
+    
+    tool_name: Optional[str] = Field("Unnamed_tool", description="Unique name for the tool")
+    tool_description: Optional[str] = Field("No description provided", description="Description of what the tool does")
+    tool_type: Optional[str] = Field(None, description="Type of tool")
+    # API-specific fields (optional for python_execution tools)
+    endpoint_url: Optional[str] = Field(None, description="API endpoint URL")
+    api_token: Optional[str] = Field(None, description="API authentication token")
+    http_method: Optional[str] = Field("GET", description="HTTP method for API calls")
+    
+    # Tool parameters schema
+    tool_parameters: Dict[str, Dict[str, Any]] = Field(default_factory=dict, description="Tool parameters definition")
+    
+
+
+
+
+
+    
 
 # --- Routes ---
+
+@app.get("/agent/{agent_id}/tools")
+def list_agent_tools(agent_id: str):
+    """List all tools for a specific agent"""
+    logger.info(f"Listing tools for agent {agent_id}")
+
+    try:
+        # Get the agent document
+        agent_results = list(agents_client.search(
+            search_text="",
+            filter=f"agent_id eq '{agent_id}'",
+            top=1
+        ))
+
+        if not agent_results:
+            raise HTTPException(status_code=404, detail="Agent not found")
+
+        agent_doc = agent_results[0]
+        tools = agent_doc.get("tools", [])
+
+        # Extract tool info from nested structure
+        tool_list = []
+        for tool in tools:
+            tool_info = {
+                "tool_id": tool.get("tool_id"),
+                "tool_name": tool.get("tool_name"),
+                "tool_description": tool.get("tool_description"),
+                "endpoint_url": tool.get("endpoint_url"),
+                "api_token": tool.get("api_token"),
+                "tool_parameters": tool.get("tool_parameters"),
+                "created_at": tool.get("created_at")
+            }
+            tool_list.append(tool_info)
+
+        return {
+            "agent_id": agent_id,
+            "tools": tool_list,
+            "total_tools": len(tool_list)
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error listing tools for agent {agent_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to retrieve tools")
+
+@app.delete("/agent/{agent_id}/tools/{tool_id}")
+def delete_tool(agent_id: str, tool_id: str):
+    logger.info(f"Deleting tool {tool_id} from agent {agent_id}")
+
+    if not tool_id:
+        raise HTTPException(status_code=400, detail="Tool ID cannot be empty")
+
+    try:
+        # Retrieve the agent document
+        agent_docs = list(agents_client.search(
+            search_text="",
+            filter=f"agent_id eq '{agent_id}'",
+            top=1
+        ))
+
+        if not agent_docs:
+            raise HTTPException(status_code=404, detail="Agent not found")
+
+        agent_doc = agent_docs[0]
+        tools = agent_doc.get("tools", [])
+
+        # Filter out the tool to be deleted
+        updated_tools = [tool for tool in tools if tool.get("tool_id") != tool_id]
+
+        if len(tools) == len(updated_tools):
+            raise HTTPException(status_code=404, detail="Tool not found in agent")
+
+        # Merge the updated tools back into the agent
+        update_payload = {
+            "agent_id": agent_id,
+            "tools": updated_tools
+        }
+
+        agents_client.merge_or_upload_documents([update_payload])
+        logger.info(f"Tool {tool_id} deleted from agent {agent_id}")
+
+        return {"message": "Tool deleted successfully", "tool_id": tool_id}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting tool {tool_id} from agent {agent_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to delete tool: {str(e)}")
+
+
 @app.post("/agent")
 def create_agent(req: AgentCreateRequest):
     agent_id = str(uuid4())
@@ -175,109 +284,132 @@ def get_all_agents():
     return agents_with_docs
 
 @app.post("/agent/{agent_id}/tools")
-def create_tool(agent_id: str, tool: ToolDefinition):
-    logger.info(f"Creating tool '{tool.tool_name}' for agent {agent_id}")
+def create_tools(agent_id: str, tools: List[ToolDefinition]):
+    logger.info(f"Adding {len(tools)} tools to agent {agent_id}")
 
-    tool_payload = {
-        "tool_id": str(uuid4()),  # this becomes tool_id
+    # Fetch existing agent document
+    results = list(agents_client.search(search_text="", filter=f"agent_id eq '{agent_id}'", top=1))
+    if not results:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    agent_doc = results[0]
+    existing_tools = agent_doc.get("tools", [])
+
+    # Prepare new tools to append
+    new_tools = []
+    for tool in tools:
+        tool_payload = {
+            "tool_id": str(uuid4()),
+            "tool_name": tool.tool_name,
+            "tool_description": tool.tool_description,
+            "endpoint_url": tool.endpoint_url,
+            "api_token": tool.api_token,
+            "tool_parameters": json.dumps(tool.tool_parameters),
+            "created_at": datetime.utcnow().isoformat() + "Z"
+        }
+        new_tools.append(tool_payload)
+        logger.info(f"Prepared tool {tool.tool_name} for insertion")
+
+    # Combine existing tools and new tools
+    updated_tools = existing_tools + new_tools
+
+    # Update the agent document with the updated tools list
+    updated_agent_doc = {
         "agent_id": agent_id,
-        "type": "tool",
-        "tool_name": tool.tool_name,
-        "tool_description": tool.tool_description,
-        "endpoint_url": tool.endpoint_url,
-        "api_token": tool.api_token,
-        "tool_parameters": json.dumps(tool.parameters),
-        "created_at": datetime.utcnow().isoformat() + "Z"
+        "tools": updated_tools
     }
 
     try:
-        agents_client.upload_documents(documents=[tool_payload])
-        logger.info(f"Tool '{tool.tool_name}' created for agent {agent_id}")
-        return {"message": "Tool registered successfully.", "tool": tool_payload}
+        # Merge or upload the agent document (depending on your SDK)
+        # Use merge_or_upload_documents to update partial document
+        agents_client.merge_or_upload_documents(documents=[updated_agent_doc])
+        logger.info(f"Successfully updated tools list for agent {agent_id}")
+
+        return {"message": "Tools added successfully", "tools": new_tools}
+
     except Exception as e:
-        logger.error(f"Tool creation failed: {e}")
-        raise HTTPException(status_code=500, detail="Failed to persist tool")
+        logger.error(f"Failed to update agent document with new tools: {e}")
+        raise HTTPException(status_code=500, detail="Failed to update agent tools")   
 
 @app.post("/chat-with-tool/{agent_id}")
 def chat_with_tool(agent_id: str, req: ChatRequest):
     logger.info(f"Tool-enabled chat for agent: {agent_id}")
-    logger.info(f"Received chat request for agent {agent_id}: {req}")
 
-    # Get the agent
-    logger.info(f"Fetching agent {agent_id}")
     results = list(agents_client.search(search_text="", filter=f"agent_id eq '{agent_id}'"))
     if not results:
-        logger.error(f"Agent {agent_id} not found")
         raise HTTPException(status_code=404, detail="Agent not found")
     agent = results[0]
 
-    # Fetch associated tools
-    logger.info(f"Fetching associated tools for agent {agent_id}")
-    tool_results = agents_client.search(
-        search_text="",
-        filter=f"agent_id eq '{agent_id}' and type eq 'tool'"
-    )
+    tool_results = agent.get("tools", [])
 
     tools = []
     for t in tool_results:
-        def create_tool_function(tool_config):
-            """Create a closure to capture the tool configuration"""
-            api_token = tool_config["api_token"]
-            url = tool_config["endpoint_url"]
-            tool_name = tool_config["name"]
-            
-            def tool_function(city: str) -> str:
-                """Get weather information for a specific city"""
-                logger.info(f"Tool {tool_name} called with city: {city}")
-                headers = {"Authorization": f"Bearer {api_token}"}
-                try:
-                    # For actual API calls, uncomment this:
-                    # response = requests.post(url, json={"city": city}, headers=headers)
-                    # return response.json()
-                    
-                    # Demo hardcoded response:
-                    mock_weather = {
-                        "new york": "Weather in New York: Sunny, 25°C",
-                        "san francisco": "Weather in San Francisco: Foggy, 18°C", 
-                        "london": "Weather in London: Rainy, 15°C",
-                        "paris": "Weather in Paris: Partly Cloudy, 22°C",
-                        "tokyo": "Weather in Tokyo: Mostly Sunny, 27°C",
-                    }
+        logger.info(f"Processing tool: {t['tool_name']}")
 
-                    city_lower = city.strip().lower()
-                    response = mock_weather.get(city_lower, f"No weather data available for '{city}'")
-                    logger.info(f"Tool {tool_name} returning: {response}")
-                    return response
-                except Exception as e:
-                    error_msg = f"Error getting weather for {city}: {str(e)}"
-                    logger.error(error_msg)
-                    return error_msg
-            
-            return tool_function
+        input_schema_data = {}
+        try:
+            tool_params_str = t.get("tool_parameters", "{}")
+            tool_params = json.loads(tool_params_str)
+            input_schema_data = tool_params.get("input_schema", {})
+        except Exception as e:
+            logger.warning(f"Failed to parse tool_parameters for {t['tool_name']}: {e}")
+            continue
 
-        # Create the tool function with proper closure
-        tool_func = create_tool_function(t)
-        
-        # Create Tool object with explicit schema
-        from langchain.tools import StructuredTool
-        from pydantic import BaseModel, Field
-        
-        # Define the input schema for the tool
-        class WeatherInput(BaseModel):
-            city: str = Field(description="The name of the city to get weather information for")
-        
-        tool = StructuredTool(
-            name=t["name"],
-            description=f"{t['tool_description']} - Use this tool when users ask about weather in any city.",
+        if not input_schema_data:
+            logger.warning(f"Skipping tool {t['tool_name']} due to missing input_schema.")
+            continue
+
+        input_fields: Dict[str, tuple] = {
+            k: (str, Field(..., description=v)) for k, v in input_schema_data.items()
+        }
+        input_schema = create_model(f"InputSchema_{t['tool_name']}", **input_fields)
+        logger.info(f"Tool {t['tool_name']} schema: {input_schema.schema_json(indent=2)}")
+
+
+        def build_func(schema, tool_name):
+            def tool_func(**kwargs):
+                logger.info(f"Tool {tool_name} called with input: {kwargs}")
+
+                mock_weather = {
+                    "New York": "Weather in New York: Sunny, 25°C",
+                    "San Francisco": "Weather in San Francisco: Foggy, 18°C",
+                    "London": "Weather in London: Rainy, 15°C",
+                    "Paris": "Weather in Paris: Partly Cloudy, 22°C",
+                    "Tokyo": "Weather in Tokyo: Mostly Sunny, 27°C",
+                }
+                mock_stocks = {
+                    "AAPL": "$192.34",
+                    "MSFT": "$342.10",
+                    "GOOGL": "$139.58",
+                    "TSLA": "$246.22",
+                    "AMZN": "$132.44",
+                }
+
+                if "city" in kwargs:
+                    city = kwargs["city"].strip()
+                    logger.info(f"Resolved city input: {city}")
+                    return mock_weather.get(city, f"No weather data available for '{city}'")
+                elif "ticker" in kwargs:
+                    ticker = kwargs["ticker"].strip().upper()
+                    logger.info(f"Resolved stock ticker input: {ticker}")
+                    return mock_stocks.get(ticker, f"No stock data available for '{ticker}'")
+                else:
+                    return f"Unsupported parameter(s): {list(kwargs.keys())}"
+
+            return tool_func
+
+        tool_func = build_func(input_schema, t['tool_name'])
+
+        tools.append(StructuredTool(
+            name=t['tool_name'],
+            description=t['tool_description'],
             func=tool_func,
-            args_schema=WeatherInput
-        )
-        
-        tools.append(tool)
-        logger.info(f"Created tool: {t['name']} with description: {t['tool_description']}")
+            args_schema=input_schema
+        ))
 
-    # Initialize OpenAI LLM
-    logger.info(f"Initializing OpenAI LLM with {len(tools)} tools for agent {agent_id}")
+    if not tools:
+        raise HTTPException(status_code=400, detail="No valid tools found for this agent.")
+
     llm = AzureChatOpenAI(
         api_key=AZURE_OPENAI_KEY,
         azure_endpoint=AZURE_ENDPOINT,
@@ -286,52 +418,237 @@ def chat_with_tool(agent_id: str, req: ChatRequest):
         temperature=0.2
     )
 
-    from langchain.agents import create_openai_functions_agent, AgentExecutor
-    from langchain.prompts import ChatPromptTemplate, MessagesPlaceholder
-
-    logger.info(f"Creating prompt for agent {agent_id}")
     prompt = ChatPromptTemplate.from_messages([
-        ("system", """You are a helpful assistant with access to tools. 
-        
-When a user asks about weather in any city, you MUST use the available weather tool to get the information.
-Do not refuse to provide weather information - use the tool provided to you.
-
-Available tools: {tool_names}
-
-Always use the appropriate tool when the user's question matches what the tool can do."""),
+        ("system", "You are a helpful assistant that must use tools to answer questions. Never guess; always use a tool."),
         ("user", "{input}"),
         MessagesPlaceholder(variable_name="agent_scratchpad")
     ])
-    
-    logger.info(f"Creating agent and executor for agent {agent_id}")
-    agent = create_openai_functions_agent(llm, tools, prompt)
 
-    # Create agent executor with explicit tool binding
-    agent_executor = AgentExecutor(
-        agent=agent, 
-        tools=tools, 
+    agent = create_openai_functions_agent(llm, tools, prompt)
+    executor = AgentExecutor(
+        agent=agent,
+        tools=tools,
         verbose=True,
         handle_parsing_errors=True,
         max_iterations=3,
         early_stopping_method="generate"
     )
 
-    # Add tool names to the prompt context
-    tool_names = [tool.name for tool in tools]
-    
-    logger.info(f"Executing agent {agent_id} with input: {req.message}")
-    logger.info(f"Available tools: {tool_names}")
-    
     try:
-        result = agent_executor.invoke({
-            "input": req.message,
-            "tool_names": ", ".join(tool_names)
+        result = executor.invoke({"input": req.message})
+
+        session_id = req.session_id or str(uuid4())
+        timestamp = datetime.utcnow().isoformat()
+        combined_message = f"user: {req.message}\nassistant: {result['output']}"
+
+        sessions_client.upload_documents([{
+            "session_id": session_id,
+            "agent_id": agent_id,
+            "messages": combined_message,
+            "updated_at": timestamp
+        }])
+
+        interactions = []
+        agent_data = agents_client.search(
+            search_text="",
+            filter=f"agent_id eq '{agent_id}'",
+            select=["interactions"]
+        )
+        for item in agent_data:
+            interactions = item.get("interactions", [])
+            break
+
+        interactions.append({
+            "session_id": session_id,
+            "user": req.message,
+            "assistant": result["output"],
+            "timestamp": timestamp
         })
-        logger.info(f"Agent execution result: {result}")
+
+        agents_client.merge_or_upload_documents([{
+            "agent_id": agent_id,
+            "interactions": interactions
+        }])
+
         return {"response": result["output"]}
+
     except Exception as e:
+        logger.error(f"Error: {e}")
+        return {"response": f"Sorry, I encountered an error: {str(e)}"}
         logger.error(f"Error executing agent {agent_id}: {str(e)}")
         return {"response": f"Sorry, I encountered an error: {str(e)}"}
+# @app.post("/chat-with-tool/{agent_id}")
+# def chat_with_tool(agent_id: str, req: ChatRequest):
+#     logger.info(f"Tool-enabled chat for agent: {agent_id}")
+#     logger.info(f"Received chat request for agent {agent_id}: {req}")
+
+#     # Get the agent
+#     logger.info(f"Fetching agent {agent_id}")
+#     results = list(agents_client.search(search_text="", filter=f"agent_id eq '{agent_id}'"))
+#     if not results:
+#         logger.error(f"Agent {agent_id} not found")
+#         raise HTTPException(status_code=404, detail="Agent not found")
+#     agent = results[0]
+
+#     # Fetch associated tools
+#     logger.info(f"Fetching associated tools for agent {agent_id}")
+#     tool_results = agents_client.search(
+#         search_text="",
+#         filter=f"agent_id eq '{agent_id}' and type eq 'tool'"
+#     )
+    
+#     tools = []
+#     for t in tool_results:
+#         logger.info(f"Processing tool: {t['tool_name']}")
+#         def create_tool_function(tool_config):
+#             """Create a closure to capture the tool configuration"""
+#             api_token = tool_config["api_token"]
+#             url = tool_config["endpoint_url"]
+#             tool_name = tool_config["tool_name"]
+            
+#             def tool_function(city: str) -> str:
+#                 """Get weather information for a specific city"""
+#                 logger.info(f"Tool {tool_name} called with city: {city}")
+#                 headers = {"Authorization": f"Bearer {api_token}"}
+#                 try:
+#                     # For actual API calls, uncomment this:
+#                     # response = requests.post(url, json={"city": city}, headers=headers)
+#                     # return response.json()
+                    
+#                     # Demo hardcoded response:
+#                     mock_weather = {
+#                         "New York": "Weather in New York: Sunny, 25°C",
+#                         "San Francisco": "Weather in San Francisco: Foggy, 18°C", 
+#                         "London": "Weather in London: Rainy, 15°C",
+#                         "Paris": "Weather in Paris: Partly Cloudy, 22°C",
+#                         "Tokyo": "Weather in Tokyo: Mostly Sunny, 27°C",
+#                     }
+
+#                     city_lower = city.strip()
+#                     response = mock_weather.get(city_lower, f"No weather data available for '{city}'")
+#                     logger.info(f"Tool {tool_name} returning: {response}")
+#                     return response
+#                 except Exception as e:
+#                     error_msg = f"Error getting weather for {city}: {str(e)}"
+#                     logger.error(error_msg)
+#                     return error_msg
+            
+#             return tool_function
+
+#         # Create the tool function with proper closure
+#         tool_func = create_tool_function(t)
+        
+#         # Create Tool object with explicit schema
+#         from langchain.tools import StructuredTool
+#         from pydantic import BaseModel, Field
+        
+#         # Define the input schema for the tool
+#         class WeatherInput(BaseModel):
+#             city: str = Field(description="The name of the city to get weather information for")
+        
+#         tool = StructuredTool(
+#             name=t["tool_name"],
+#             description=f"{t['tool_description']} - Use this tool when users ask about weather in any city.",
+#             func=tool_func,
+#             args_schema=WeatherInput
+#         )
+        
+#         tools.append(tool)
+#         logger.info(f"Created tool: {t['tool_name']} with description: {t['tool_description']}")
+
+#     # Initialize OpenAI LLM
+#     logger.info(f"Initializing OpenAI LLM with {len(tools)} tools for agent {agent_id}")
+#     llm = AzureChatOpenAI(
+#         api_key=AZURE_OPENAI_KEY,
+#         azure_endpoint=AZURE_ENDPOINT,
+#         api_version=AZURE_API_VERSION,
+#         deployment_name=AZURE_DEPLOYMENT,
+#         temperature=0.2
+#     )
+
+#     from langchain.agents import create_openai_functions_agent, AgentExecutor
+#     from langchain.prompts import ChatPromptTemplate, MessagesPlaceholder
+
+#     logger.info(f"Creating prompt for agent {agent_id}")
+#     prompt = ChatPromptTemplate.from_messages([
+#         ("system", """You are a helpful assistant who can provide weather related answers and has access to tools. 
+#         You must only answer only using tools and not from knowledge.
+                
+#         When a user asks about weather in any city, you MUST use the available weather tool to get the information.
+#         Do not refuse to provide weather information - use the tool provided to you.
+
+#         Available tools: {tool_names}
+
+#         Always use the appropriate tool when the user's question matches what the tool can do."""),
+#         ("user", "{input}"),
+#         MessagesPlaceholder(variable_name="agent_scratchpad")
+#     ])
+    
+#     logger.info(f"Creating agent and executor for agent {agent_id}")
+#     agent = create_openai_functions_agent(llm, tools, prompt)
+
+#     # Create agent executor with explicit tool binding
+#     agent_executor = AgentExecutor(
+#         agent=agent, 
+#         tools=tools, 
+#         verbose=True,
+#         handle_parsing_errors=True,
+#         max_iterations=3,
+#         early_stopping_method="generate"
+#     )
+
+#     # Add tool names to the prompt context
+#     tool_names = [tool.name for tool in tools]
+    
+#     logger.info(f"Executing agent {agent_id} with input: {req.message}")
+#     logger.info(f"Available tools: {tool_names}")
+    
+#     try:
+#         result = agent_executor.invoke({
+#             "input": req.message,
+#             "tool_names": ", ".join(tool_names)
+#         })
+#         logger.info(f"Agent execution result: {result}")
+#         #Updating Session index
+#         session_id = req.session_id or str(uuid4())
+#         timestamp = datetime.utcnow().isoformat()
+#         combined_message = f"user: {req.message}\nassistant: {result['output']}"  
+#         sessions_client.upload_documents(documents=[{
+#         "session_id": session_id,
+#         "agent_id": agent_id,
+#         "messages": combined_message,
+#         "updated_at": timestamp
+#         }])
+#         logger.info(f"Session updated: {session_id}") 
+
+#         # Update agent interactions
+#         # Fetch agent metadata from Azure AI Search
+#         agent_data = agents_client.search(
+#             search_text="",
+#             filter=f"agent_id eq '{agent_id}'",
+#             select=["interactions"]
+#         )
+
+#         existing_interactions = []
+#         for item in agent_data:
+#             existing_interactions = item.get("interactions", [])
+#             break  # Only one agent_id match expected
+#         existing_interactions.append({
+#             "session_id": session_id,
+#             "user": req.message,
+#             "assistant": result["output"],
+#             "timestamp": timestamp
+#         })
+
+#         agents_client.merge_or_upload_documents(documents=[{
+#             "agent_id": agent_id,
+#             "interactions": existing_interactions
+#         }])
+#         logger.info(f"Agent interactions updated: {agent_id}")
+#         return {"response": result["output"]}
+#     except Exception as e:
+#         logger.error(f"Error executing agent {agent_id}: {str(e)}")
+#         return {"response": f"Sorry, I encountered an error: {str(e)}"}
 
 @app.patch("/agent/{agent_id}")
 def update_agent(agent_id: str, req: AgentUpdateRequest):

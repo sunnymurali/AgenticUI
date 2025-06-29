@@ -72,7 +72,17 @@ export const api = {
       system_prompt: item.agent.system_prompt,
       temperature: item.agent.temperature,
       retriever_strategy: item.agent.retriever_strategy,
-      use_tools: item.agent.tool_id ? true : false,
+      use_tools: item.agent.tools && 
+                 item.agent.tools.length > 0 && 
+                 item.agent.tools.some((tool: any) => tool.tool_id),
+      // Tool-specific fields for agents list (from first tool)
+      tools: item.agent.tools || [],
+      tool_id: item.agent.tools && item.agent.tools[0] ? item.agent.tools[0].tool_id : undefined,
+      tool_name: item.agent.tools && item.agent.tools[0] ? item.agent.tools[0].tool_name : undefined,
+      tool_description: item.agent.tools && item.agent.tools[0] ? item.agent.tools[0].tool_description : undefined,
+      endpoint_url: item.agent.tools && item.agent.tools[0] ? item.agent.tools[0].endpoint_url : undefined,
+      api_token: item.agent.tools && item.agent.tools[0] ? item.agent.tools[0].api_token : undefined,
+      tool_parameters: item.agent.tools && item.agent.tools[0] ? item.agent.tools[0].tool_parameters : undefined,
       interactions: [],
       created_at: new Date(),
       updated_at: new Date(),
@@ -106,12 +116,13 @@ export const api = {
         document_count: result.documents.length,
         documents: result.documents,
         // Tool-specific fields (when tool_id is present)
-        tool_id: result.agent.tool_id || undefined,
-        tool_name: result.agent.tool_name || undefined,
-        tool_description: result.agent.tool_description || undefined,
-        endpoint_url: result.agent.endpoint_url || undefined,
-        api_token: result.agent.api_token || undefined,
-        tool_parameters: result.agent.tool_parameters || undefined,
+        tools: result.agent.tools || [],
+        tool_id: result.agent.tools && result.agent.tools[0] ? result.agent.tools[0].tool_id : undefined,
+        tool_name: result.agent.tools && result.agent.tools[0] ? result.agent.tools[0].tool_name : undefined,
+        tool_description: result.agent.tools && result.agent.tools[0] ? result.agent.tools[0].tool_description : undefined,
+        endpoint_url: result.agent.tools && result.agent.tools[0] ? result.agent.tools[0].endpoint_url : undefined,
+        api_token: result.agent.tools && result.agent.tools[0] ? result.agent.tools[0].api_token : undefined,
+        tool_parameters: result.agent.tools && result.agent.tools[0] ? result.agent.tools[0].tool_parameters : undefined,
       },
       documents: result.documents,
       document_count: result.documents.length
@@ -186,7 +197,9 @@ export const api = {
     }
     
     const agentData = await agentResponse.json();
-    const hasTools = agentData.agent.tool_id ? true : false;
+    const hasTools = agentData.agent.tools && 
+                     agentData.agent.tools.length > 0 && 
+                     agentData.agent.tools.some((tool: any) => tool.tool_id);
 
     // Step 2: Route to appropriate chat endpoint based on tool presence
     const endpoint = hasTools ? `/chat-with-tool/${agentId}` : `/chat/${agentId}`;
