@@ -393,6 +393,15 @@ def chat_with_tool(agent_id: str, req: ChatRequest):
                     ticker = kwargs["ticker"].strip().upper()
                     logger.info(f"Resolved stock ticker input: {ticker}")
                     return mock_stocks.get(ticker, f"No stock data available for '{ticker}'")
+                elif "face_value" in kwargs and "years_to_maturity" in kwargs:
+                    try:
+                        face_value = float(kwargs["face_value"])
+                        years = float(kwargs["years_to_maturity"])
+                        discount_rate = 0.05  # fixed for mock
+                        price = face_value / ((1 + discount_rate) ** years)
+                        return f"Estimated bond price at 5% discount rate is ${price:.2f}"
+                    except Exception as e:
+                        return f"Error computing bond price: {str(e)}"    
                 else:
                     return f"Unsupported parameter(s): {list(kwargs.keys())}"
 

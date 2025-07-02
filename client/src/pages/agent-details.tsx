@@ -376,9 +376,55 @@ export default function AgentDetails() {
                 <div>
                   <h3 className="font-medium text-slate-800 mb-2">Tool Parameters</h3>
                   <div className="bg-slate-50 p-4 rounded-lg">
-                    <pre className="text-sm text-slate-700 bg-white p-3 rounded border overflow-x-auto">
-                      {JSON.stringify(JSON.parse(agent.tool_parameters), null, 2)}
-                    </pre>
+                  {(() => {
+                        try {
+                          const params = JSON.parse(agent.tool_parameters);
+                          return (
+                            <div className="space-y-3">
+                              {Object.entries(params).map(([key, value]) => (
+                                <div key={key} className="bg-white p-3 rounded border">
+                                  <div className="flex items-center justify-between mb-2">
+                                    <span className="font-medium text-slate-800 capitalize">{key.replace('_', ' ')}</span>
+                                    <Badge variant="outline" className="text-xs">
+                                      {Array.isArray(value) ? 'List' : typeof value}
+                                    </Badge>
+                                  </div>
+                                  {Array.isArray(value) ? (
+                                    <div className="space-y-1">
+                                      {value.map((item, index) => (
+                                        <div key={index} className="bg-slate-50 p-2 rounded text-sm">
+                                          {typeof item === 'object' ? (
+                                            <pre className="text-xs text-slate-600 overflow-x-auto">
+                                              {JSON.stringify(item, null, 2)}
+                                            </pre>
+                                          ) : (
+                                            <span className="text-slate-700">{String(item)}</span>
+                                          )}
+                                        </div>
+                                      ))}
+                                    </div>
+                                  ) : typeof value === 'object' ? (
+                                    <pre className="text-sm text-slate-700 bg-slate-50 p-2 rounded overflow-x-auto">
+                                      {JSON.stringify(value, null, 2)}
+                                    </pre>
+                                  ) : (
+                                    <span className="text-sm text-slate-700">{String(value)}</span>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          );
+                        } catch (error) {
+                          return (
+                            <div className="bg-red-50 p-3 rounded border border-red-200">
+                              <p className="text-red-600 text-sm">Invalid JSON format</p>
+                              <pre className="text-xs text-red-500 mt-2 overflow-x-auto">
+                                {agent.tool_parameters}
+                              </pre>
+                            </div>
+                          );
+                        }
+                      })()}
                   </div>
                 </div>
               )}
