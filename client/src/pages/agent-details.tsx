@@ -311,123 +311,133 @@ export default function AgentDetails() {
         </Card>
         )}
         {/* Tool Information - Show when tool_id is present */}
-        {agent.tool_id && (
+        {/* Tools Information - Show when tools array has items */}
+        {agent.tools && agent.tools.length > 0 && (
           <Card>
             <CardHeader>
               <div className="flex items-center space-x-2">
                 <Wrench className="text-amber-600" size={20} />
-                <CardTitle>Tool Configuration</CardTitle>
-                <Badge variant="default" className="bg-amber-100 text-amber-800">Tool Enabled</Badge>
+                <CardTitle>Tools Configuration</CardTitle>
+                <Badge variant="default" className="bg-amber-100 text-amber-800">
+                  {agent.tools.length} Tool{agent.tools.length > 1 ? 's' : ''} Enabled
+                </Badge>
               </div>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="bg-slate-50 p-4 rounded-lg">
-                  <div className="flex items-center space-x-2 mb-2">
-                    <Wrench size={16} className="text-slate-600" />
-                    <span className="font-medium text-slate-800">Tool ID</span>
+            <CardContent className="space-y-6">
+              {agent.tools.map((tool: any, index: number) => (
+                <div key={tool.tool_id || index} className="border rounded-lg p-4 bg-white">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="font-medium text-slate-800 flex items-center space-x-2">
+                      <Code size={16} className="text-amber-600" />
+                      <span>{tool.tool_name || `Tool ${index + 1}`}</span>
+                    </h3>
+                    <Badge variant="outline" className="text-xs">
+                      Tool #{index + 1}
+                    </Badge>
                   </div>
-                  <p className="text-sm font-mono text-slate-700 bg-white p-2 rounded border">
-                    {agent.tool_id}
-                  </p>
-                </div>
-
-                <div className="bg-slate-50 p-4 rounded-lg">
-                  <div className="flex items-center space-x-2 mb-2">
-                    <Code size={16} className="text-slate-600" />
-                    <span className="font-medium text-slate-800">Tool Name</span>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                    <div className="bg-slate-50 p-3 rounded-lg">
+                      <div className="flex items-center space-x-2 mb-2">
+                        <Wrench size={14} className="text-slate-600" />
+                        <span className="font-medium text-slate-800 text-sm">Tool ID</span>
+                      </div>
+                      <p className="text-xs font-mono text-slate-700 bg-white p-2 rounded border">
+                        {tool.tool_id || 'N/A'}
+                      </p>
+                    </div>
+                    <div className="bg-slate-50 p-3 rounded-lg">
+                      <div className="flex items-center space-x-2 mb-2">
+                        <Globe size={14} className="text-slate-600" />
+                        <span className="font-medium text-slate-800 text-sm">Endpoint URL</span>
+                      </div>
+                      <p className="text-xs font-mono text-slate-700 bg-white p-2 rounded border break-all">
+                        {tool.endpoint_url || 'N/A'}
+                      </p>
+                    </div>
+                    <div className="bg-slate-50 p-3 rounded-lg">
+                      <div className="flex items-center space-x-2 mb-2">
+                        <Key size={14} className="text-slate-600" />
+                        <span className="font-medium text-slate-800 text-sm">API Token</span>
+                      </div>
+                      <p className="text-xs font-mono text-slate-700 bg-white p-2 rounded border">
+                        {tool.api_token ? '••••••••••••••••' : 'N/A'}
+                      </p>
+                    </div>
+                    <div className="bg-slate-50 p-3 rounded-lg">
+                      <div className="flex items-center space-x-2 mb-2">
+                        <span className="font-medium text-slate-800 text-sm">Created</span>
+                      </div>
+                      <p className="text-xs text-slate-700">
+                        {tool.created_at ? new Date(tool.created_at).toLocaleDateString() : 'N/A'}
+                      </p>
+                    </div>
                   </div>
-                  <p className="text-sm text-slate-700">
-                    {agent.tool_name || 'N/A'}
-                  </p>
-                </div>
-
-                <div className="bg-slate-50 p-4 rounded-lg">
-                  <div className="flex items-center space-x-2 mb-2">
-                    <Globe size={16} className="text-slate-600" />
-                    <span className="font-medium text-slate-800">Endpoint URL</span>
-                  </div>
-                  <p className="text-sm font-mono text-slate-700 bg-white p-2 rounded border break-all">
-                    {agent.endpoint_url || 'N/A'}
-                  </p>
-                </div>
-
-                <div className="bg-slate-50 p-4 rounded-lg">
-                  <div className="flex items-center space-x-2 mb-2">
-                    <Key size={16} className="text-slate-600" />
-                    <span className="font-medium text-slate-800">API Token</span>
-                  </div>
-                  <p className="text-sm font-mono text-slate-700 bg-white p-2 rounded border">
-                    {agent.api_token ? '••••••••••••••••' : 'N/A'}
-                  </p>
-                </div>
-              </div>
-
-              {agent.tool_description && (
-                <div>
-                  <h3 className="font-medium text-slate-800 mb-2">Tool Description</h3>
-                  <div className="bg-slate-50 p-4 rounded-lg">
-                    <p className="text-slate-700">{agent.tool_description}</p>
-                  </div>
-                </div>
-              )}
-
-              {agent.tool_parameters && (
-                <div>
-                  <h3 className="font-medium text-slate-800 mb-2">Tool Parameters</h3>
-                  <div className="bg-slate-50 p-4 rounded-lg">
-                  {(() => {
-                        try {
-                          const params = JSON.parse(agent.tool_parameters);
-                          return (
-                            <div className="space-y-3">
-                              {Object.entries(params).map(([key, value]) => (
-                                <div key={key} className="bg-white p-3 rounded border">
-                                  <div className="flex items-center justify-between mb-2">
-                                    <span className="font-medium text-slate-800 capitalize">{key.replace('_', ' ')}</span>
-                                    <Badge variant="outline" className="text-xs">
-                                      {Array.isArray(value) ? 'List' : typeof value}
-                                    </Badge>
-                                  </div>
-                                  {Array.isArray(value) ? (
-                                    <div className="space-y-1">
-                                      {value.map((item, index) => (
-                                        <div key={index} className="bg-slate-50 p-2 rounded text-sm">
-                                          {typeof item === 'object' ? (
-                                            <pre className="text-xs text-slate-600 overflow-x-auto">
-                                              {JSON.stringify(item, null, 2)}
-                                            </pre>
-                                          ) : (
-                                            <span className="text-slate-700">{String(item)}</span>
-                                          )}
-                                        </div>
-                                      ))}
+                  {tool.tool_description && (
+                    <div className="mb-4">
+                      <h4 className="font-medium text-slate-800 mb-2 text-sm">Description</h4>
+                      <div className="bg-slate-50 p-3 rounded-lg">
+                        <p className="text-slate-700 text-sm">{tool.tool_description}</p>
+                      </div>
+                    </div>
+                  )}
+                  {tool.tool_parameters && (
+                    <div>
+                      <h4 className="font-medium text-slate-800 mb-2 text-sm">Parameters</h4>
+                      <div className="bg-slate-50 p-3 rounded-lg">
+                        {(() => {
+                          try {
+                            const params = JSON.parse(tool.tool_parameters);
+                            return (
+                              <div className="space-y-2">
+                                {Object.entries(params).map(([key, value]) => (
+                                  <div key={key} className="bg-white p-2 rounded border">
+                                    <div className="flex items-center justify-between mb-1">
+                                      <span className="font-medium text-slate-800 capitalize text-sm">{key.replace('_', ' ')}</span>
+                                      <Badge variant="outline" className="text-xs">
+                                        {Array.isArray(value) ? 'List' : typeof value}
+                                      </Badge>
                                     </div>
-                                  ) : typeof value === 'object' ? (
-                                    <pre className="text-sm text-slate-700 bg-slate-50 p-2 rounded overflow-x-auto">
-                                      {JSON.stringify(value, null, 2)}
-                                    </pre>
-                                  ) : (
-                                    <span className="text-sm text-slate-700">{String(value)}</span>
-                                  )}
-                                </div>
-                              ))}
-                            </div>
-                          );
-                        } catch (error) {
-                          return (
-                            <div className="bg-red-50 p-3 rounded border border-red-200">
-                              <p className="text-red-600 text-sm">Invalid JSON format</p>
-                              <pre className="text-xs text-red-500 mt-2 overflow-x-auto">
-                                {agent.tool_parameters}
-                              </pre>
-                            </div>
-                          );
-                        }
-                      })()}
-                  </div>
+                                    {Array.isArray(value) ? (
+                                      <div className="space-y-1">
+                                        {value.map((item, idx) => (
+                                          <div key={idx} className="bg-slate-50 p-1 rounded text-xs">
+                                            {typeof item === 'object' ? (
+                                              <pre className="text-xs text-slate-600 overflow-x-auto">
+                                                {JSON.stringify(item, null, 2)}
+                                              </pre>
+                                            ) : (
+                                              <span className="text-slate-700">{String(item)}</span>
+                                            )}
+                                          </div>
+                                        ))}
+                                      </div>
+                                    ) : typeof value === 'object' ? (
+                                      <pre className="text-xs text-slate-700 bg-slate-50 p-1 rounded overflow-x-auto">
+                                        {JSON.stringify(value, null, 2)}
+                                      </pre>
+                                    ) : (
+                                      <span className="text-xs text-slate-700">{String(value)}</span>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            );
+                          } catch (error) {
+                            return (
+                              <div className="bg-red-50 p-2 rounded border border-red-200">
+                                <p className="text-red-600 text-xs">Invalid JSON format</p>
+                                <pre className="text-xs text-red-500 mt-1 overflow-x-auto">
+                                  {tool.tool_parameters}
+                                </pre>
+                              </div>
+                            );
+                          }
+                        })()}
+                      </div>
+                    </div>
+                  )}
                 </div>
-              )}
+              ))}
             </CardContent>
           </Card>
         )}
